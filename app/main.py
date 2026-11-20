@@ -17,6 +17,10 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
 
 
+class _NoPublications(Exception):
+    """Internal: no releases exist yet, so render the empty state."""
+
+
 def _db_path() -> Path:
     return Path(os.environ.get("CALIBRATION_DB", str(BASE_DIR / "data" / "calibration.sqlite3")))
 
@@ -67,6 +71,94 @@ def _render(
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request) -> HTMLResponse:
     return _render(request)
+
+
+def _parse_publication_id(raw: str | None, label: str) -> int | None:
+    if raw is None or not raw.strip():
+        return None
+    text = raw.strip()
+    if not text.isdigit():
+        raise db.ValidationError(f"{label}发布号必须是正整数：{text!r}")
+    value = int(text)
+    if value <= 0:
+        raise db.ValidationError(f"{label}发布号必须是正整数：{text!r}")
+    return value
+
+
+@app.get("/compare", response_class=HTMLResponse)
+def compare(request: Request) -> HTMLResponse:
+    query = request.query_params
+    data = db.get_release_overview(_db_path())
+    options = data.publication_options
+    errors: List[str] = []
+
+    # Default to the two most recent releases; a single release compares to
+    # itself, which is a valid (empty) result.
+    default_new = options[0].id if options else None
+    default_old = options[1].id if len(options) > 1 else default_new
+    old_raw = query.get("old", "" if default_old is None else str(default_old))
+    new_raw = query.get("new", "" if default_new is None else str(default_new))
+    page_raw = (query.get("page") or "1").strip()
+    page_size_raw = (query.get("page_size") or str(db.COMPARE_PAGE_SIZE)).strip()
+
+    if not page_raw.isdigit() or int(page_raw) < 1:
+        errors.append(f"页码必须是从 1 开始的整数：{page_raw!r}")
+        page = 1
+    else:
+        page = int(page_raw)
+    if not page_size_raw.isdigit() or not (
+        1 <= int(page_size_raw) <= db.COMPARE_MAX_PAGE_SIZE
+    ):
+        errors.append(
+            f"每页行数必须是 1–{db.COMPARE_MAX_PAGE_SIZE} 的整数：{page_size_raw!r}"
+        )
+        page_size = db.COMPARE_PAGE_SIZE
+    else:
+        page_size = int(page_size_raw)
+
+    result = None
+    selected_old = old_raw
+    selected_new = new_raw
+    status_code = 400 if errors else 200
+    try:
+        old_id = _parse_publication_id(old_raw, "旧")
+        new_id = _parse_publication_id(new_raw, "新")
+        if old_id is None or new_id is None:
+            if not options and not query.get("old") and not query.get("new"):
+                # Nothing to compare yet; render the friendly empty state.
+                raise _NoPublications()
+            raise db.ValidationError("请选择要比较的两个发布号")
+        selected_old, selected_new = str(old_id), str(new_id)
+        if not errors:
+            result = db.compare_publications(
+                _db_path(), old_id, new_id, page=page, page_size=page_size
+            )
+    except _NoPublications:
+        status_code = 400 if errors else 200
+    except db.PublicationNotFound as exc:
+        errors.append(str(exc) + "。请确认发布号后重试；旧发布只要记录仍在即可查询。")
+        status_code = 404
+    except db.SnapshotUnavailable as exc:
+        errors.append(str(exc) + "。该发布缺少完整快照，无法核对。")
+        status_code = 409
+    except db.ValidationError as exc:
+        errors.append(str(exc))
+        status_code = 400
+
+    context = {
+        "request": request,
+        "data": data,
+        "result": result,
+        "errors": errors,
+        "selected_old": selected_old,
+        "selected_new": selected_new,
+        "page": result.page if result else page,
+        "page_size": result.page_size if result else page_size,
+        "max_page_size": db.COMPARE_MAX_PAGE_SIZE,
+    }
+    return templates.TemplateResponse(
+        request, "compare.html", context, status_code=status_code
+    )
 
 
 @app.post("/lock")

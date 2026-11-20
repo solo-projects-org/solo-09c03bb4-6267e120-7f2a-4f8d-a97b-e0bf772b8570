@@ -76,7 +76,16 @@
       background: var(--accent);
       color: #fff;
     }
-    button.secondary { background: #fff; color: var(--accent); border: 1px solid var(--accent); }
+    button.secondary, a.button {
+      background: #fff;
+      color: var(--accent);
+      border: 1px solid var(--accent);
+      text-decoration: none;
+      display: inline-block;
+      border-radius: 7px;
+      padding: 6px 14px;
+      font-size: 14px;
+    }
     button:disabled { background: #9aa7ae; cursor: not-allowed; }
     .pill {
       display: inline-block;
@@ -143,6 +152,8 @@
   {% if notices %}
     {% for item in notices %}<div class="msg notice">{{ item }}</div>{% endfor %}
   {% endif %}
+
+  <p style="margin:0 0 12px;"><a class="button" href="/compare">核对两次发布之间的权重变化 →</a></p>
 
   <section class="card" id="summary">
     <h2>台账概览</h2>

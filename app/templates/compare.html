@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>住户能源调查 · 发布差异核对</title>
+  <style>
+    :root {
+      --ink: #1f2933;
+      --muted: #5b6770;
+      --line: #d8dee3;
+      --bg: #f5f7f8;
+      --card: #ffffff;
+      --accent: #1f6f5c;
+      --accent-soft: #e4f1ec;
+      --warn: #8a4b0f;
+      --warn-soft: #fbeee0;
+      --bad: #8b1e1e;
+      --bad-soft: #fbe9e9;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+      color: var(--ink);
+      background: var(--bg);
+      line-height: 1.6;
+    }
+    header {
+      background: linear-gradient(135deg, #143d33, #1f6f5c);
+      color: #fff;
+      padding: 28px 32px 24px;
+    }
+    header h1 { margin: 0 0 6px; font-size: 24px; letter-spacing: .5px; }
+    header p { margin: 0; color: #cfe6de; font-size: 14px; }
+    header a { color: #fff; }
+    main { max-width: 1180px; margin: 0 auto; padding: 24px 20px 64px; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 20px 22px;
+      margin-bottom: 20px;
+      box-shadow: 0 1px 2px rgba(16, 24, 32, .04);
+    }
+    .card h2 { font-size: 18px; margin: 0 0 4px; }
+    .card .hint { color: var(--muted); font-size: 13px; margin: 0 0 16px; }
+    .stats { display: flex; flex-wrap: wrap; gap: 12px; }
+    .stat {
+      flex: 1 1 150px;
+      background: var(--accent-soft);
+      border-radius: 8px;
+      padding: 10px 14px;
+    }
+    .stat b { display: block; font-size: 20px; color: var(--accent); }
+    .stat span { font-size: 12px; color: var(--muted); }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td { padding: 7px 10px; border-bottom: 1px solid var(--line); text-align: left; }
+    th { background: #f0f3f4; font-weight: 600; font-size: 13px; color: var(--muted); }
+    td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+    button {
+      font: inherit;
+      border: 0;
+      border-radius: 7px;
+      padding: 7px 16px;
+      cursor: pointer;
+      background: var(--accent);
+      color: #fff;
+    }
+    button.secondary, a.button {
+      background: #fff;
+      color: var(--accent);
+      border: 1px solid var(--accent);
+      text-decoration: none;
+      display: inline-block;
+      border-radius: 7px;
+      padding: 6px 14px;
+      font-size: 14px;
+    }
+    button:disabled { background: #9aa7ae; cursor: not-allowed; }
+    .msg { border-radius: 8px; padding: 11px 14px; margin: 0 0 12px; font-size: 14px; }
+    .msg.error { background: var(--bad-soft); color: var(--bad); border: 1px solid #e7bcbc; }
+    .msg.empty { background: var(--accent-soft); color: var(--accent); border: 1px solid #bfdccc; }
+    .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    @media (max-width: 900px) { .cols { grid-template-columns: 1fr; } }
+    .mono { font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; font-size: 12px; }
+    .scroll { max-height: 460px; overflow: auto; border: 1px solid var(--line); border-radius: 8px; }
+    .scroll table { margin: 0; }
+    .scroll thead th { position: sticky; top: 0; z-index: 1; }
+    .selector { display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-end; }
+    .selector label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
+    input[type=number], select {
+      padding: 7px 10px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      font: inherit;
+      background: #fff;
+      min-width: 220px;
+      font-variant-numeric: tabular-nums;
+    }
+    input[type=number]:focus, select:focus { outline: 2px solid var(--accent); border-color: var(--accent); }
+    .up { color: var(--warn); }
+    .down { color: var(--accent); }
+    .pager { display: flex; gap: 10px; align-items: center; margin-top: 14px; flex-wrap: wrap; }
+    .pager .hint { margin: 0; }
+    .subhead { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+    .subhead .hint { margin: 0; }
+    footer { color: var(--muted); font-size: 12px; text-align: center; padding-top: 12px; }
+  </style>
+</head>
+<body>
+<header>
+  <h1>住户能源调查 · 发布差异核对</h1>
+  <p>
+    按两个发布号核对逐户权重变化，并汇总到街道与住房类型。
+    {% if result %}
+      {{ result.old.household_count }} / {{ result.new.household_count }} 户发布快照 ·
+      已选发布 #{{ result.old.id }} → #{{ result.new.id }}
+    {% else %}
+      样本 {{ data.summary.household_count }} 户 · 共 {{ data.summary.publication_count }} 次成功发布
+    {% endif %}
+  </p>
+</header>
+<main>
+  <p><a class="button" href="/">← 返回校准台账</a></p>
+
+  {% if errors %}
+  <div class="msg error" id="errors">
+    {% for item in errors %}<div>{{ item }}</div>{% endfor %}
+  </div>
+  {% endif %}
+
+  <section class="card" id="selector">
+    <h2>选择发布号</h2>
+    <p class="hint">
+      旧发布只要记录仍在即可查询。比较针对两个发布的完整逐户快照，由数据库直接计算；
+      核对结果按发布号固定，期间产生的新发布不会改变已选结果。
+      {% if data.publication_options_limited %}
+        发布记录较多，下拉仅显示最近 {{ data.publication_options|length }} 次；更早的发布号可直接输入。
+      {% endif %}
+    </p>
+    <form method="get" action="/compare" class="selector">
+      <label>旧发布（基准）
+        <input type="number" name="old" min="1" step="1" list="publication-options"
+               value="{{ selected_old }}" aria-label="旧发布号">
+      </label>
+      <label>新发布（对照）
+        <input type="number" name="new" min="1" step="1" list="publication-options"
+               value="{{ selected_new }}" aria-label="新发布号">
+      </label>
+      <datalist id="publication-options">
+        {% for item in data.publication_options %}
+          <option value="{{ item.id }}">#{{ item.id }} · {{ item.published_at }} · {{ item.household_count }} 户 · 合计 {{ "{:,}".format(item.total_weight) }}</option>
+        {% endfor %}
+      </datalist>
+      <label>每页行数
+        <input type="number" name="page_size" min="1" max="{{ max_page_size }}" step="1"
+               value="{{ page_size }}" style="min-width:90px;width:90px;" aria-label="每页行数">
+      </label>
+      <button type="submit">核对差异</button>
+    </form>
+    {% if data.publication_options %}
+    <details style="margin-top:12px;">
+      <summary style="cursor:pointer;color:var(--muted);font-size:13px;">最近 {{ data.publication_options|length }} 次发布</summary>
+      <div class="scroll" style="max-height:220px;margin-top:10px;">
+        <table>
+          <thead><tr><th>发布号</th><th>发布时间</th><th class="num">户数</th><th class="num">权重合计</th></tr></thead>
+          <tbody>
+          {% for item in data.publication_options %}
+            <tr>
+              <td>#{{ item.id }}</td>
+              <td class="mono">{{ item.published_at }}</td>
+              <td class="num">{{ item.household_count }}</td>
+              <td class="num">{{ "{:,}".format(item.total_weight) }}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </details>
+    {% endif %}
+  </section>
+
+  {% if result %}
+  <section class="card" id="totals">
+    <h2>发布概览</h2>
+    <p class="hint">
+      发布 #{{ result.old.id }}（{{ result.old.published_at }}）→
+      发布 #{{ result.new.id }}（{{ result.new.published_at }}）。
+      按户数比较，共 {{ result.total_households }} 户样本。
+    </p>
+    <div class="stats">
+      <div class="stat"><b>{{ result.changed_count }}</b><span>权重变化的住户</span></div>
+      <div class="stat"><b>{{ result.old.household_count }} → {{ result.new.household_count }}</b><span>发布户数（旧 → 新）</span></div>
+      <div class="stat"><b>{{ "{:,}".format(result.changed_old_sum) }} → {{ "{:,}".format(result.changed_new_sum) }}</b><span>变化住户权重合计（旧 → 新）</span></div>
+      <div class="stat"><b>{{ "{:,}".format(result.old.total_weight) }} → {{ "{:,}".format(result.new.total_weight) }}</b><span>全部权重合计（旧 → 新）</span></div>
+      {% if result.added_count or result.removed_count %}
+      <div class="stat"><b>{{ result.added_count }} / {{ result.removed_count }}</b><span>仅新发布 / 仅旧发布有记录</span></div>
+      {% endif %}
+    </div>
+  </section>
+
+  <section class="card" id="households">
+    <div class="subhead">
+      <h2>逐户权重变化</h2>
+      <p class="hint">按样本号排序；仅列出权重发生变化的住户。共 {{ result.changed_count }} 户，第 {{ result.page }} / {{ result.total_pages }} 页。</p>
+    </div>
+    {% if result.rows %}
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr><th>样本号</th><th>街道</th><th>住房类型</th>
+            <th class="num">旧权重（#{{ result.old.id }}）</th>
+            <th class="num">新权重（#{{ result.new.id }}）</th>
+            <th class="num">变化</th></tr>
+        </thead>
+        <tbody>
+        {% for row in result.rows %}
+          {% set delta = (row.new_weight or 0) - (row.old_weight or 0) %}
+          <tr>
+            <td class="mono">{{ row.sample_id }}</td>
+            <td>{{ row.street }}</td>
+            <td>{{ row.housing_type }}</td>
+            <td class="num">{{ row.old_weight if row.old_weight is not none else "—" }}</td>
+            <td class="num">{{ row.new_weight if row.new_weight is not none else "—" }}</td>
+            <td class="num {% if delta > 0 %}up{% elif delta < 0 %}down{% endif %}">
+              {{ "%+d"|format(delta) }}
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="pager">
+      {% if page > 1 %}
+        <a class="button" href="/compare?old={{ result.old.id }}&new={{ result.new.id }}&page={{ page - 1 }}&page_size={{ result.page_size }}">← 上一页</a>
+      {% else %}
+        <button type="button" class="secondary" disabled>← 上一页</button>
+      {% endif %}
+      <span class="hint">第 {{ result.page }} / {{ result.total_pages }} 页 · 每页 {{ result.page_size }} 行</span>
+      {% if page < result.total_pages %}
+        <a class="button" href="/compare?old={{ result.old.id }}&new={{ result.new.id }}&page={{ page + 1 }}&page_size={{ result.page_size }}">下一页 →</a>
+      {% else %}
+        <button type="button" class="secondary" disabled>下一页 →</button>
+      {% endif %}
+    </div>
+    {% else %}
+    <div class="msg empty">
+      两个发布的逐户权重完全相同：没有住户的权重发生变化。
+    </div>
+    {% endif %}
+  </section>
+
+  <section class="card" id="groups">
+    <h2>按街道与住房类型汇总</h2>
+    <p class="hint">
+      「变化合计」只统计权重发生变化的住户（旧快照值 → 新快照值）；
+      「全部合计」为该组在两个发布中的完整权重合计。
+    </p>
+    <div class="cols">
+      <div>
+        <h3 style="font-size:15px;margin:0 0 8px;">按街道</h3>
+        <div class="scroll" style="max-height:360px;">
+          <table>
+            <thead>
+              <tr><th>街道</th><th class="num">变化户数</th>
+                <th class="num">变化合计（旧 → 新）</th>
+                <th class="num">全部合计（旧 → 新）</th></tr>
+            </thead>
+            <tbody>
+            {% for group in result.streets %}
+              <tr>
+                <td>{{ group.name }}</td>
+                <td class="num">{{ group.changed_count }}</td>
+                <td class="num mono">{{ "{:,}".format(group.old_sum) }} → {{ "{:,}".format(group.new_sum) }}</td>
+                <td class="num mono">{{ "{:,}".format(group.old_total) }} → {{ "{:,}".format(group.new_total) }}</td>
+              </tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div>
+        <h3 style="font-size:15px;margin:0 0 8px;">按住房类型</h3>
+        <div class="scroll" style="max-height:360px;">
+          <table>
+            <thead>
+              <tr><th>住房类型</th><th class="num">变化户数</th>
+                <th class="num">变化合计（旧 → 新）</th>
+                <th class="num">全部合计（旧 → 新）</th></tr>
+            </thead>
+            <tbody>
+            {% for group in result.types %}
+              <tr>
+                <td>{{ group.name }}</td>
+                <td class="num">{{ group.changed_count }}</td>
+                <td class="num mono">{{ "{:,}".format(group.old_sum) }} → {{ "{:,}".format(group.new_sum) }}</td>
+                <td class="num mono">{{ "{:,}".format(group.old_total) }} → {{ "{:,}".format(group.new_total) }}</td>
+              </tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+  {% elif not errors %}
+  <section class="card">
+    <div class="msg empty">尚无成功发布记录，暂无可核对的发布号。请先在台账页完成两次发布。</div>
+  </section>
+  {% endif %}
+
+  <footer>比较只读取所选发布的不可变快照，不读取现行权重，也不会修改任何数据。</footer>
+</main>
+</body>
+</html>
